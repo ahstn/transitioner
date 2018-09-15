@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/ahstn/transitioner/docker"
 	"github.com/docker/docker/client"
+	"github.com/fatih/color"
 	"github.com/spf13/viper"
 	"gopkg.in/resty.v1"
 )
+
+const tab = "        "
 
 // Config is the definition of what containers should be tested.
 type Config struct {
@@ -83,7 +87,6 @@ func main() {
 		panic(err)
 	}
 	c.SetNetwork(networkID, c.Network)
-	fmt.Println("Network: ", networkID)
 
 	_, err = docker.CreateContainer(ctx, cli, &c.Gateway)
 	if err != nil {
@@ -105,10 +108,24 @@ func main() {
 		panic(err)
 	}
 
+	go docker.WatchContainer(ctx, cli, c.Gateway)
+	go docker.WatchContainer(ctx, cli, c.Service)
+	logTitle := docker.PadNameColor(color.New(color.FgYellow).SprintFunc(), "testing")
+
 	// This is where tests will be ran, for now it's a simple GET request
 	// to validate the docker setup
 	resp, err := resty.R().Get("http://127.0.0.1:5050/health")
-	fmt.Println("Response Body:", resp)
+	fmt.Println(logTitle, "| Health Response:", resp)
+
+	time.Sleep(500 * time.Millisecond)
+	resp, err = resty.R().Post("http://127.0.0.1:5050/auth")
+	fmt.Println(logTitle, "| Auth Response:\n", resp)
+	fmt.Println(logTitle, "| Test Case 1: Contains 'msg=success'")
+	if strings.Contains(resp.String(), "msg=success") {
+		fmt.Println(logTitle, "| Passed! ✔")
+	} else {
+		fmt.Println(logTitle, "| Failed ✘")
+	}
 
 	if c.Cleanup {
 		docker.StopAndRemoveContainer(ctx, cli, c.Gateway)
