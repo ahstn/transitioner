@@ -92,12 +92,32 @@ func CreateContainer(ctx context.Context, cli *client.Client, c *Container) (str
 
 // RunContainer starts the container `c` using the `cli`
 func RunContainer(ctx context.Context, cli *client.Client, c Container) error {
-	fmt.Println("Container:", c)
-	fmt.Println("ID: ", c.ID)
-
 	err := cli.ContainerStart(ctx, c.ID, types.ContainerStartOptions{})
 	if err != nil {
 		return fmt.Errorf("Unable to start %s - %s", c.Hostname, err)
+	}
+	return nil
+}
+
+// StopContainer stops the container `c` using the `cli`
+func StopContainer(ctx context.Context, cli *client.Client, c Container) error {
+	err := cli.ContainerStop(ctx, c.ID, nil)
+	if err != nil {
+		return fmt.Errorf("Unable to stop %s - %s", c.Hostname, err)
+	}
+	return nil
+}
+
+// StopAndRemoveContainer stops and removes the container `c` using the `cli`
+func StopAndRemoveContainer(ctx context.Context, cli *client.Client, c Container) error {
+	err := cli.ContainerStop(ctx, c.ID, nil)
+	if err != nil {
+		return fmt.Errorf("Unable to stop %s - %s", c.Hostname, err)
+	}
+
+	err = cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{})
+	if err != nil {
+		return fmt.Errorf("Unable to remove %s - %s", c.Hostname, err)
 	}
 	return nil
 }

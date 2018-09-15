@@ -13,4 +13,5 @@ require (
 	github.com/stevvooe/resumable v0.0.0-20180830230917-22b14a53ba50 // indirect
 	github.com/stretchr/testify v1.2.2 // indirect
 	golang.org/x/net v0.0.0-20180911220305-26e67e76b6c3 // indirect
+	gopkg.in/resty.v1 v1.9.1
 )
