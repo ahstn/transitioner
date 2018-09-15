@@ -1,0 +1,6 @@
+transitioner.yaml
+!example/transitioner.yaml
+dist/
+go.sum
+coverage.txt
+testdir/
