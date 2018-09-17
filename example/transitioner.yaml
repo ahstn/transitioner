@@ -1,8 +1,11 @@
 ---
 network: transitioner
+kill_timeout: 10
+cleanup: true
 gateway:
   -
     image: ahstn/transitioner-gateway:1.0.0
+    cmd: "-target-addr auth -target-port 5000"
     hostname: gateway
     ports:
       - 5050:5050
@@ -11,9 +14,9 @@ gateway:
       - 1.1.0
   -
     image: ahstn/transitioner-auth:1.0.0
+    cmd: "-listen-addr :5000"
     hostname: auth
     ports:
       - 5000:5000
     versions:
       - 1.0.0
-
