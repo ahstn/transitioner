@@ -4,37 +4,40 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"time"
 
 	"github.com/ahstn/transitioner/docker"
 	"github.com/docker/docker/client"
-	"github.com/fatih/color"
 	"github.com/spf13/viper"
-	"gopkg.in/resty.v1"
 )
 
 const tab = "        "
 
 // Config is the definition of what containers should be tested.
 type Config struct {
-	Network     string           `yaml:"network"`
-	KillTimeout time.Duration    `yaml:"kill_timeout"`
-	Cleanup     bool             `yaml:"cleanup"`
-	Gateway     docker.Container `yaml:"gateway"`
-	Service     docker.Container `yaml:"service"`
+	Network     string             `yaml:"network"`
+	KillTimeout time.Duration      `yaml:"kill_timeout"`
+	Cleanup     bool               `yaml:"cleanup"`
+	Services    []docker.Container `yaml:"services"`
+	Test        Test               `yaml:"test"`
+}
+
+// Test is the user defined event that tests their application(s)
+type Test struct {
+	Cmd string `yaml:"cmd"`
+	Dir string `yaml:"dir"`
 }
 
 // SetNetwork is syntastic sugar for setting all the Containers' network
 func (c *Config) SetNetwork(id, name string) {
-	if c.Gateway.NetworkID == "" {
-		c.Gateway.NetworkID = id
-		c.Gateway.NetworkName = name
-	}
-	if c.Service.NetworkID == "" {
-		c.Service.NetworkID = id
-		c.Service.NetworkName = name
+	for _, s := range c.Services {
+		if s.NetworkID == "" {
+			s.NetworkID = id
+			s.NetworkName = name
+		}
 	}
 }
 
@@ -76,8 +79,9 @@ func main() {
 		defer cancel()
 
 		if c.Cleanup {
-			docker.StopAndRemoveContainer(ctx, cli, c.Gateway)
-			docker.StopAndRemoveContainer(ctx, cli, c.Service)
+			for _, s := range c.Services {
+				docker.StopAndRemoveContainer(ctx, cli, s)
+			}
 		}
 		close(done)
 	}()
@@ -88,47 +92,35 @@ func main() {
 	}
 	c.SetNetwork(networkID, c.Network)
 
-	_, err = docker.CreateContainer(ctx, cli, &c.Gateway)
+	for _, s := range c.Services {
+		_, err = docker.CreateContainer(ctx, cli, &s)
+		if err != nil {
+			panic(err)
+		}
+
+		err = docker.RunContainer(ctx, cli, s)
+		if err != nil {
+			panic(err)
+		}
+
+		go docker.WatchContainer(ctx, cli, s)
+	}
+
+	if c.Test.Dir != "" {
+		os.Chdir(c.Test.Dir)
+	}
+
+	cmd := strings.Split(c.Test.Cmd, " ")[0]
+	args := strings.Split(c.Test.Cmd, " ")[1:]
+	out, err := exec.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		panic(err)
 	}
-
-	_, err = docker.CreateContainer(ctx, cli, &c.Service)
-	if err != nil {
-		panic(err)
-	}
-
-	err = docker.RunContainer(ctx, cli, c.Gateway)
-	if err != nil {
-		panic(err)
-	}
-
-	err = docker.RunContainer(ctx, cli, c.Service)
-	if err != nil {
-		panic(err)
-	}
-
-	go docker.WatchContainer(ctx, cli, c.Gateway)
-	go docker.WatchContainer(ctx, cli, c.Service)
-	logTitle := docker.PadNameColor(color.New(color.FgYellow).SprintFunc(), "testing")
-
-	// This is where tests will be ran, for now it's a simple GET request
-	// to validate the docker setup
-	resp, err := resty.R().Get("http://127.0.0.1:5050/health")
-	fmt.Println(logTitle, "| Health Response:", resp)
-
-	time.Sleep(500 * time.Millisecond)
-	resp, err = resty.R().Post("http://127.0.0.1:5050/auth")
-	fmt.Println(logTitle, "| Auth Response:\n", resp)
-	fmt.Println(logTitle, "| Test Case 1: Contains 'msg=success'")
-	if strings.Contains(resp.String(), "msg=success") {
-		fmt.Println(logTitle, "| Passed! ✔")
-	} else {
-		fmt.Println(logTitle, "| Failed ✘")
-	}
+	fmt.Println(string(out))
 
 	if c.Cleanup {
-		docker.StopAndRemoveContainer(ctx, cli, c.Gateway)
-		docker.StopAndRemoveContainer(ctx, cli, c.Service)
+		for _, s := range c.Services {
+			docker.StopAndRemoveContainer(ctx, cli, s)
+		}
 	}
 }
